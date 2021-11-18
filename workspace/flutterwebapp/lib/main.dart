@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
-import 'package:like_button/like_button.dart';
 
 Future main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -35,10 +34,26 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
-
+  ScrollController controller = ScrollController();
+  
+  int lazyLen = 1; //starting with one image
   List<bool> _list = [];
   Future<List<ImageData>>? futureData;
   final firestoreInstance = FirebaseFirestore.instance;
+
+  @override
+  void initState() {
+    super.initState();
+    controller.addListener(_scrollListener);
+    _list = []; 
+    futureData = getCloudFirestoreImageData();
+  }
+
+  @override
+  void dispose() {
+    controller.removeListener(_scrollListener);
+    super.dispose();
+  }
 
   updateCloudFirestoreImageData(ImageData imageData, int index) async {
     CollectionReference collRef = firestoreInstance.collection('imgData');
@@ -100,13 +115,6 @@ class _MyHomePageState extends State<MyHomePage> {
       },
     );
   }
-
-  @override
-  void initState() {
-    super.initState();
-    _list = []; 
-    futureData = getCloudFirestoreImageData();
-  }
   
   Card buildCard(ImageData imageData, int index) {
     var heading = imageData.title;
@@ -147,6 +155,15 @@ class _MyHomePageState extends State<MyHomePage> {
         ));
     }
 
+  void _scrollListener() {
+    //lazy loading images one after another upon scrolling to the bottom
+    if (controller.position.extentAfter == 0) { 
+      setState(() {
+        lazyLen = lazyLen < _list.length? lazyLen + 1 : lazyLen;
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     
@@ -161,14 +178,17 @@ class _MyHomePageState extends State<MyHomePage> {
             future: futureData,
             builder: (context, snapshot) {
               if (snapshot.hasData) {
-                //print(snapshot.data);
                 List<ImageData>? data = snapshot.data;
                 var length = data?.length;
 
                 return 
                 ListView.builder(
-                itemCount: data?.length,
+                controller: controller,
+                itemCount: lazyLen,
                 itemBuilder: (BuildContext context, int index) {
+                  if (index == lazyLen) {
+                    return CircularProgressIndicator();
+                  }
                   var imageData = data == null ? ImageData("1","Default","Default",false,"Default") : data[index];
                   return buildCard(imageData, index);
                 }
